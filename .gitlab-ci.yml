@@ -1,0 +1,49 @@
+image: registry.gitlab.com/kolanich/fixed_python:latest
+
+stages:
+  - build
+
+pages:
+  tags:
+    - shared
+  stage: build
+  variables:
+    GIT_DEPTH: "1"
+    PYTHONUSERBASE: "${CI_PROJECT_DIR}/python_user_packages"
+    DEBFULLNAME: "${GITLAB_USER_LOGIN}"
+    #DEBEMAIL: "${GITLAB_USER_EMAIL}"
+
+  before_script:
+    - export PATH="$PATH:$PYTHONUSERBASE/bin" # don't move into `variables`
+    - echo deb https://mirrors.kernel.org/debian stretch-backports main contrib >> /etc/apt/sources.list
+    - apt-get update
+    - apt-get install -y reprepro fakeroot dpkg-sig
+    - apt-get install -y --no-install-recommends -t stretch-backports firejail firejail-profiles
+    - mkdir -p ~/.gnupg
+    - mkdir -p ./public
+    - touch ~/.gnupg/gpg.conf
+    - chmod -R 600 ~/.gnupg
+    - echo keyid-format none >> ~/.gnupg/gpg.conf
+    - echo with-fingerprint >> ~/.gnupg/gpg.conf
+    - echo personal-cipher-preferences AES256 >> ~/.gnupg/gpg.conf
+    - gpg --version
+    - pip3 install --upgrade --pre --user git+https://github.com/amoffat/sh.git@858adf0c682af4c40e41f34d6926696b7a5d3b12 git+https://github.com/tqdm/tqdm.git@ebda7120efef500f6a7c8dea80e5ea6f47090803
+    - "export GPG_KEY_FINGERPRINT=`echo $GPG_KEY | base64 -d | gpg --list-packets | grep -iPo '(?<=keyid: )[a-f0-9]+'`"
+    - echo $GPG_KEY_FINGERPRINT
+    - echo $GPG_KEY | base64 -d | gpg --import
+    - export GPG_KEY=WIPED
+    - gpg --export $GPG_KEY_FINGERPRINT > ./public/public.gpg
+    - gpg --list-keys $GPG_KEY_FINGERPRINT
+    - gpg --recv-keys --keyserver=hkps://keyserver.ubuntu.com/ CBA23971357C2E6590D9EFD3EC8FEF3A7BFB4EDA
+
+  cache:
+    paths:
+      - "$PYTHONUSERBASE"
+
+  script:
+    - python3 ./BuildDeb.py
+    - if [ ! -z "$PYTHON_GRAAL_DOCKER_BUILD_HOOK_TOKEN" ]; then wget --post-data="token=${PYTHON_GRAAL_DOCKER_BUILD_HOOK_TOKEN}&ref=master" -O - https://gitlab.com/api/v4/projects/10497669/trigger/pipeline || true; fi;
+
+  artifacts:
+    paths:
+      - public

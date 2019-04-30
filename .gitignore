@@ -1,0 +1,7 @@
+./CMake_unpacked
+./downloads
+./packagesRoots
+./packages
+./repo
+./public
+__pycache__
